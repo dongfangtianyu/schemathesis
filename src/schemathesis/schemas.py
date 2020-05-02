@@ -26,10 +26,10 @@ from .constants import HookLocation
 from .converter import to_json_schema, to_json_schema_recursive
 from .exceptions import InvalidSchema
 from .filters import should_skip_by_tag, should_skip_endpoint, should_skip_method
-from .hooks import warn_deprecated_hook
+from .hooks import HookDispatcher, warn_deprecated_hook
 from .models import Endpoint, empty_object
 from .types import Filter, Hook, NotSet
-from .utils import NOT_SET, GenericResponse, StringDatesYAMLLoader
+from .utils import NOT_SET, GenericResponse, StringDatesYAMLLoader, deprecated
 
 # Reference resolving will stop after this depth
 RECURSION_DEPTH_LIMIT = 100
@@ -64,7 +64,7 @@ class BaseSchema(Mapping):
     endpoint: Optional[Filter] = attr.ib(default=None)  # pragma: no mutate
     tag: Optional[Filter] = attr.ib(default=None)  # pragma: no mutate
     app: Any = attr.ib(default=None)  # pragma: no mutate
-    hooks: Dict[HookLocation, Hook] = attr.ib(factory=dict)  # pragma: no mutate
+    hooks: HookDispatcher = attr.ib(factory=HookDispatcher)  # pragma: no mutate
     validate_schema: bool = attr.ib(default=True)  # pragma: no mutate
 
     def __iter__(self) -> Iterator[str]:
@@ -164,11 +164,14 @@ class BaseSchema(Mapping):
         """Extract response schema from `responses`."""
         raise NotImplementedError
 
+    @deprecated("'register_hook` is deprecated, use `hooks.register' instead")
     def register_hook(self, place: str, hook: Hook) -> None:
         warn_deprecated_hook(hook)
-        key = HookLocation[place]
-        self.hooks[key] = hook
+        if place not in HookLocation.__members__:
+            raise KeyError(place)
+        self.hooks.register_hook_with_name(f"before_generate_{place}", hook, skip_validation=True)
 
+    @deprecated("'with_hook` is deprecated, use `hooks.apply' instead")
     def with_hook(self, place: str, hook: Hook) -> Callable[[GenericTest], GenericTest]:
         """Register a hook for a specific test."""
         warn_deprecated_hook(hook)
@@ -177,16 +180,14 @@ class BaseSchema(Mapping):
 
         def wrapper(func: GenericTest) -> GenericTest:
             if not hasattr(func, "_schemathesis_hooks"):
-                func._schemathesis_hooks = {}  # type: ignore
+                func._schemathesis_hooks = HookDispatcher()  # type: ignore
             # a string key is simpler to use later
-            func._schemathesis_hooks[place] = hook  # type: ignore
+            func._schemathesis_hooks.register_hook_with_name(  # type: ignore
+                f"before_generate_{place}", hook, skip_validation=True
+            )
             return func
 
         return wrapper
-
-    def get_hook(self, place: str) -> Optional[Hook]:
-        key = HookLocation[place]
-        return self.hooks.get(key)
 
     def get_content_types(self, endpoint: Endpoint, response: GenericResponse) -> List[str]:
         """Content types available for this endpoint."""
