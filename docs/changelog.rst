@@ -6,6 +6,12 @@ Changelog
 `Unreleased`_
 -------------
 
+Added
+~~~~~
+
+- ``loaders.from_fastapi`` method to construct parametrizer instances from FastAPI. `#24`_
+
+
 `1.9.1`_ - 2020-06-21
 ---------------------
 

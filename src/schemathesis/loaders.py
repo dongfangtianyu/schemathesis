@@ -6,6 +6,7 @@ from urllib.parse import urljoin
 import jsonschema
 import requests
 import yaml
+from fastapi.testclient import TestClient as FastAPIClient
 from jsonschema import ValidationError
 from werkzeug.test import Client
 
@@ -246,4 +247,36 @@ def from_aiohttp(
         operation_id=operation_id,
         validate_schema=validate_schema,
         **kwargs,
+    )
+
+
+def from_fastapi(
+    schema_path: str,
+    app: Any,
+    base_url: Optional[str] = None,
+    method: Optional[Filter] = None,
+    endpoint: Optional[Filter] = None,
+    tag: Optional[Filter] = None,
+    operation_id: Optional[Filter] = None,
+    validate_schema: bool = True,
+    **kwargs: Any,
+) -> BaseOpenAPISchema:
+
+    kwargs.setdefault("headers", {}).setdefault("User-Agent", USER_AGENT)
+    client = FastAPIClient(app)
+    response = client.get(schema_path or "/openapi.json", **kwargs)
+    # Raising exception to provide unified behavior
+    # E.g. it will be handled in CLI - a proper error message will be shown
+    if 400 <= response.status_code < 600:
+        raise HTTPError(response=response, url=schema_path)
+    return from_file(
+        response.text,
+        location=schema_path,
+        base_url=base_url or "http://testserver",
+        method=method,
+        endpoint=endpoint,
+        tag=tag,
+        operation_id=operation_id,
+        app=app,
+        validate_schema=validate_schema,
     )
